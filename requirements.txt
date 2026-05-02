@@ -1,0 +1,9 @@
+arch==7.2.0
+numpy>=1.26
+pandas>=2.2
+requests>=2.31
+scipy>=1.13
+streamlit>=1.35
+plotly>=5.22
+streamlit-autorefresh>=1.0.1
+tqdm>=4.66
