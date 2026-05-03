@@ -23,6 +23,7 @@ import warnings
 import numpy as np
 from arch import arch_model
 from scipy import stats
+from scipy.stats import entropy as scipy_entropy
 
 warnings.filterwarnings("ignore")
 
@@ -71,6 +72,66 @@ def estimate_conditional_vol(log_returns: np.ndarray) -> float:
 
     except Exception:
         return _ewma_vol(log_returns)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Entropy-based volatility scaling
+# ─────────────────────────────────────────────────────────────────────────────
+def compute_entropy_scalar(
+    log_returns: np.ndarray,
+    n: int = 168,          # lookback window (7 days of hourly bars)
+    bins: int = 20,        # histogram bins for distribution estimation
+    base_scalar: float = 1.0,
+    max_scalar: float = 1.3
+) -> float:
+    """
+    Shannon entropy-based volatility scaling.
+
+    - Computes entropy of the log-return distribution over last n bars
+    - Normalises it against a rolling calm baseline (10th percentile)
+    - Returns a scalar in [base_scalar, max_scalar] to multiply GARCH σ
+
+    Logic:
+        calm market  → entropy low  → scalar ≈ 1.0  (no change)
+        chaotic market → entropy high → scalar up to max_scalar (widen interval)
+    """
+    returns = log_returns[-n:] if len(log_returns) >= n else log_returns
+
+    # Build probability distribution via histogram
+    counts, _ = np.histogram(returns, bins=bins, density=False)
+    probs = counts / counts.sum()
+    probs = probs[probs > 0]  # drop zero-prob bins (log undefined)
+
+    current_entropy = scipy_entropy(probs, base=2)  # bits
+
+    # Rolling entropy baseline: use 10th percentile of all sub-windows
+    # as "calm" reference so scalar is relative, not absolute
+    window_entropies = []
+    step = max(1, n // 10)
+    for i in range(0, len(log_returns) - n, step):
+        chunk = log_returns[i: i + n]
+        c, _ = np.histogram(chunk, bins=bins, density=False)
+        p = c / c.sum()
+        p = p[p > 0]
+        window_entropies.append(scipy_entropy(p, base=2))
+
+    if len(window_entropies) < 3:
+        return base_scalar  # not enough history → no scaling
+
+    calm_entropy = np.percentile(window_entropies, 10)   # baseline
+    chaos_entropy = np.percentile(window_entropies, 90)  # ceiling
+
+    # Normalise current entropy to [0, 1]
+    span = chaos_entropy - calm_entropy
+    if span < 1e-8:
+        return base_scalar
+
+    normalised = np.clip((current_entropy - calm_entropy) / span, 0.0, 1.0)
+
+    # Map to scalar range with smooth curve (sqrt gives more aggressive early response)
+    scalar = base_scalar + (max_scalar - base_scalar) * (normalised ** 2)
+
+    return float(np.clip(scalar, base_scalar, max_scalar))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -127,6 +188,10 @@ def predict_95_range(
     mu    = float(log_returns.mean())               # drift
     sigma = estimate_conditional_vol(log_returns)   # GARCH conditional vol
 
+    # Entropy-based volatility scaling — widen intervals in chaotic regimes
+    entropy_scalar = compute_entropy_scalar(log_returns)
+    sigma = sigma * entropy_scalar
+
     # Fit Student-t for fat-tail innovations
     df, _, _ = fit_student_t(log_returns)
 
@@ -144,12 +209,13 @@ def predict_95_range(
     upper = float(np.percentile(S1, 100 * (1 - ALPHA / 2)))
 
     return {
-        "current_price": S0,
-        "lower_95":      lower,
-        "upper_95":      upper,
-        "sigma":         sigma,
-        "mu":            mu,
-        "t_df":          df,
+        "current_price":  S0,
+        "lower_95":       lower,
+        "upper_95":       upper,
+        "sigma":          sigma,
+        "mu":             mu,
+        "t_df":           df,
+        "entropy_scalar": entropy_scalar,
     }
 
 

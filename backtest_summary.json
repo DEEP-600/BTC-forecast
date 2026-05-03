@@ -1,7 +1,7 @@
 {
-  "coverage_95": 0.9486,
-  "mean_width": 1160.35,
-  "mean_winkler_95": 1691.5,
+  "coverage_95": 0.9556,
+  "mean_width": 1279.86,
+  "mean_winkler_95": 1712.11,
   "n_predictions": 720,
-  "generated_at": "2026-05-01T12:31:09.841418+00:00"
+  "generated_at": "2026-05-02T12:23:27.217249+00:00"
 }

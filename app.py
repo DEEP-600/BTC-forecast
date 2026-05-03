@@ -63,6 +63,7 @@ def init_db():
             upper_95      REAL,
             sigma         REAL,
             t_df          REAL,
+            entropy_scalar REAL,
             actual_price  REAL,
             inside        INTEGER
         )
@@ -74,8 +75,8 @@ def init_db():
 def save_prediction(con, pred: dict, bar_time: str):
     con.execute("""
         INSERT OR IGNORE INTO predictions
-          (fetched_at, bar_time, current_price, lower_95, upper_95, sigma, t_df)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+          (fetched_at, bar_time, current_price, lower_95, upper_95, sigma, t_df, entropy_scalar)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         datetime.now(timezone.utc).isoformat(),
         bar_time,
@@ -84,6 +85,7 @@ def save_prediction(con, pred: dict, bar_time: str):
         pred["upper_95"],
         pred["sigma"],
         pred["t_df"],
+        pred["entropy_scalar"],
     ))
     con.commit()
 
@@ -224,7 +226,8 @@ def main():
         f"<p style='color:{vol_color};font-size:1.1rem'>"
         f"Volatility Regime: <b>{vol_label}</b> "
         f"&nbsp;|&nbsp; Hourly σ = {pred['sigma']*100:.4f}% "
-        f"&nbsp;|&nbsp; Student-t df = {pred['t_df']:.1f}"
+        f"&nbsp;|&nbsp; Student-t df = {pred['t_df']:.1f} "
+        f"&nbsp;|&nbsp; Entropy scalar = {pred['entropy_scalar']:.2f}x"
         f"</p>",
         unsafe_allow_html=True,
     )

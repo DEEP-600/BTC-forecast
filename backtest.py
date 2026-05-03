@@ -87,15 +87,16 @@ def run_backtest() -> list[dict]:
         actual_close = float(closes[LOOKBACK_BARS + i + 1])   # revealed after prediction
 
         record = {
-            "bar_time":      timestamps[LOOKBACK_BARS + i].isoformat(),
-            "lower_95":      result["lower_95"],
-            "upper_95":      result["upper_95"],
-            "actual_price":  actual_close,
-            "current_price": result["current_price"],
-            "sigma":         result["sigma"],
-            "mu":            result["mu"],
-            "t_df":          result["t_df"],
-            "inside":        result["lower_95"] <= actual_close <= result["upper_95"],
+            "bar_time":       timestamps[LOOKBACK_BARS + i].isoformat(),
+            "lower_95":       result["lower_95"],
+            "upper_95":       result["upper_95"],
+            "actual_price":   actual_close,
+            "current_price":  result["current_price"],
+            "sigma":          result["sigma"],
+            "mu":             result["mu"],
+            "t_df":           result["t_df"],
+            "entropy_scalar": result["entropy_scalar"],
+            "inside":         result["lower_95"] <= actual_close <= result["upper_95"],
         }
         records.append(record)
 
