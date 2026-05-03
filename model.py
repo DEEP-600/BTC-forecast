@@ -19,6 +19,7 @@ Known bug in the starter notebook this fixes:
     GARCH weights recent shocks exponentially → far tighter ranges in practice.
 """
 
+import os
 import warnings
 import numpy as np
 from arch import arch_model
@@ -31,7 +32,7 @@ warnings.filterwarnings("ignore")
 # ─────────────────────────────────────────────────────────────────────────────
 # Constants
 # ─────────────────────────────────────────────────────────────────────────────
-N_SIMS       = 10_000   # Monte-Carlo paths per prediction
+N_SIMS       = int(os.getenv("N_PATHS", "10000"))  # Monte-Carlo paths per prediction
 ALPHA        = 0.05     # 1 - confidence level → 95% interval
 GARCH_MIN_OBS = 100     # minimum bars before we attempt GARCH; use EWMA below
 EWMA_LAMBDA  = 0.94     # RiskMetrics decay — fallback when GARCH fails/too few obs

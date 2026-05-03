@@ -19,6 +19,7 @@ Host on Streamlit Community Cloud (free, stays alive):
 """
 
 import json
+import os
 import sqlite3
 import time
 from datetime import datetime, timezone
@@ -47,7 +48,16 @@ st_autorefresh(interval=5 * 60 * 1000, key="auto_refresh")
 LOOKBACK        = 500          # bars used for model fitting
 CHART_BARS      = 50           # bars shown on chart
 SUMMARY_FILE    = Path("backtest_summary.json")
-DB_FILE         = Path("predictions.db")
+
+# DB path: Railway volume (/data) if available, else local
+VOLUME_DB = "/data/predictions.db"
+LOCAL_DB  = os.path.join(os.path.dirname(__file__), "predictions.db")
+DB_FILE   = Path(VOLUME_DB if os.path.exists("/data") else LOCAL_DB)
+
+# Auto-seed volume DB on first Railway deploy
+if os.path.exists("/data") and not os.path.exists(VOLUME_DB):
+    import seed_db
+    seed_db.seed()
 
 
 # ── SQLite persistence (Part C) ───────────────────────────────────────────────
