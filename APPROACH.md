@@ -1,4 +1,4 @@
-# How I Built This — My Approach to the AlphaI × Polaris Challenge
+# How I Built This - My Approach to the AlphaI × Polaris Challenge
 
 > This document walks through my actual thinking process — what I started with, what broke, what I learned, and what I ended up with. It's not a polished story. It's what actually happened.
 
@@ -24,8 +24,8 @@ The brief asked for a 30-day backtest — 720 hourly bars, walk-forward, no peek
 
 Running the backtest on the basic GBM gave me:
 
-- **Coverage: ~91%** — too low. Supposed to be 95%.
-- **Winkler: ~$2,100** — decent but there's clearly room.
+- **Coverage: ~91%** - too low. Supposed to be 95%.
+- **Winkler: ~$2,100** - decent but there's clearly room.
 
 The model was being overconfident. It kept predicting ranges that were too narrow, missing more than 5% of the time.
 
@@ -49,7 +49,7 @@ In plain terms: it has memory. It reacts to recent conditions rather than treati
 
 I also kept the Student-t distribution for the innovations (the random shocks in each simulated path) because Bitcoin's tail behaviour is genuinely heavier than normal. Fitting the degrees-of-freedom parameter per window rather than fixing it gave noticeably better results — when BTC is behaving more normally, the df goes up; when it's in a wild patch, df drops.
 
-I added an EWMA (Exponentially Weighted Moving Average) fallback in case GARCH failed to converge on a particular window — this happens occasionally with short or weird data windows and I didn't want the whole app to crash because of one bad bar.
+I added an EWMA (Exponentially Weighted Moving Average) fallback in case GARCH failed to converge on a particular window, this happens occasionally with short or weird data windows and I didn't want the whole app to crash because of one bad bar.
 
 After this upgrade, backtest results improved meaningfully:
 - **Coverage: 94.86%** (was ~91%)
@@ -61,14 +61,14 @@ Coverage was now close to 95% but slightly under. Winkler dropped significantly.
 
 ## The Entropy Experiment
 
-I noticed the starter notebook mentioned entropy-based volatility scaling — the idea being that when the *distribution* of recent returns starts looking more chaotic (higher Shannon entropy), the market is entering a regime shift and your intervals should widen preemptively.
+I noticed the starter notebook mentioned entropy-based volatility scaling, the idea being that when the *distribution* of recent returns starts looking more chaotic (higher Shannon entropy), the market is entering a regime shift and your intervals should widen preemptively.
 
 I implemented it. Compute the Shannon entropy of the log-return histogram over the last 168 bars, compare it to a rolling calm baseline, and scale GARCH's sigma up when entropy spikes.
 
 First attempt: `max_scalar = 2.5`. This was a disaster.
 
 Results got *worse*:
-- Coverage jumped to 98.75% — way too high. Ranges were so wide they were almost always right, but the Winkler score blew up to $2,325 because the width penalty dominates when you're not missing.
+- Coverage jumped to 98.75%, way too high. Ranges were so wide they were almost always right, but the Winkler score blew up to $2,325 because the width penalty dominates when you're not missing.
 
 This taught me something important about the Winkler formula: **width itself is a penalty**. You're not trying to never miss. You're trying to find the tightest range that still catches ~95% of outcomes. Making ranges wider to avoid misses can easily make your Winkler *worse* if the misses you were preventing weren't that far off anyway.
 
@@ -83,7 +83,7 @@ The entropy scaling adds maybe $20 to the Winkler score but brings coverage from
 
 ## Building the Dashboard
 
-The brief said not to overthink the design — "does it load and show the right numbers" is what matters. But I also wanted it to actually be readable and useful, not just functional.
+The brief said not to overthink the design - "does it load and show the right numbers" is what matters. But I also wanted it to actually be readable and useful, not just functional.
 
 I used Streamlit. The dashboard:
 - Fetches the latest closed 1-hour BTC/USDT bar from Binance on every load
@@ -104,9 +104,9 @@ Every time the dashboard loads, it saves the current prediction to a SQLite data
 
 Two bugs I had to fix here:
 
-**Bug 1 — Duplicate rows.** On every page visit, the app was inserting a new row for the same bar rather than updating the existing one. Fix: add a `UNIQUE` constraint on `bar_time` and use `INSERT OR IGNORE` so the first prediction for each bar wins and subsequent visits don't overwrite it.
+**Bug 1 - Duplicate rows.** On every page visit, the app was inserting a new row for the same bar rather than updating the existing one. Fix: add a `UNIQUE` constraint on `bar_time` and use `INSERT OR IGNORE` so the first prediction for each bar wins and subsequent visits don't overwrite it.
 
-**Bug 2 — Off-by-one in actual close.** I was matching bar T's prediction with bar T's close price, but the prediction is for what happens *after* bar T closes — so the actual should be bar T+1's close. Fixed with a `next_close_map` that correctly aligns predictions with their outcomes.
+**Bug 2 - Off-by-one in actual close.** I was matching bar T's prediction with bar T's close price, but the prediction is for what happens *after* bar T closes — so the actual should be bar T+1's close. Fixed with a `next_close_map` that correctly aligns predictions with their outcomes.
 
 After fixing both bugs, the live coverage table started accumulating correctly. As of submission:
 - **Live coverage: 100%** (growing daily)
