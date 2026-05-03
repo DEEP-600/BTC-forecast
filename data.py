@@ -98,6 +98,8 @@ def fetch_klines(n_bars: int = 750, retries: int = 3) -> pd.DataFrame:
     df = pd.concat(all_frames).sort_index()
     df = df[~df.index.duplicated(keep="first")]
 
+    df = df[:-1]  # always remove the last (open) candle
+
     # Drop the last bar if it is still open (close_time > now)
     now_ms = int(time.time() * 1000)
     df = df[df["close_time"].astype("int64") // 1_000_000 < now_ms]

@@ -41,8 +41,14 @@ st.set_page_config(
     layout="wide",
 )
 
-# Auto-refresh every 5 minutes (next candle logic)
-st_autorefresh(interval=5 * 60 * 1000, key="auto_refresh")
+def ms_until_next_candle(buffer_sec=30):
+    now = datetime.now(timezone.utc)
+    secs_past_hour = now.minute * 60 + now.second
+    secs_until_close = 3600 - secs_past_hour
+    # Add 30s buffer so Binance has time to finalise the candle
+    return (secs_until_close + buffer_sec) * 1000
+
+st_autorefresh(interval=ms_until_next_candle(), key="candle_sync")
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 LOOKBACK        = 500          # bars used for model fitting
@@ -142,7 +148,7 @@ def load_history(con, limit: int = 200) -> pd.DataFrame:
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-@st.cache_data(ttl=300)   # re-fetch at most every 5 min
+@st.cache_data(ttl=55)   # re-fetch at most every 55s
 def get_data(n: int) -> pd.DataFrame:
     return fetch_klines(n_bars=n)
 

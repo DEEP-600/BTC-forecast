@@ -76,6 +76,7 @@ Bitcoin has fat tails — extreme moves happen far more often than a normal bell
 ├── data.py                 # Binance data fetcher
 ├── backtest.py             # 720-bar walk-forward backtest (Part A)
 ├── backtest_results.jsonl  # Part A output — 720 predictions
+├── backtest_summary.json   # Part A metrics summary (dashboard reads this)
 ├── predictions_seed.db     # Seed DB with initial live history
 ├── seed_db.py              # Seeds volume DB on first Railway deploy
 ├── requirements.txt
