@@ -187,6 +187,103 @@ def main():
 
     st.divider()
 
+    # ── Live Performance (resolved bars) ────────────────────────────────────────
+    st.subheader("📡 Live Performance (Resolved Bars)")
+
+    # Open a read-only DB connection for live performance metrics
+    con_live = sqlite3.connect(DB_FILE)
+    resolved = pd.read_sql(
+        "SELECT * FROM predictions WHERE actual_price IS NOT NULL ORDER BY bar_time ASC",
+        con_live,
+    )
+
+    if len(resolved) < 3:
+        st.info("⏳ Waiting for more resolved predictions…")
+    else:
+        # Compute per-row winkler
+        resolved["winkler"] = resolved.apply(
+            lambda r: winkler_score(r["lower_95"], r["upper_95"], r["actual_price"]),
+            axis=1,
+        )
+        live_coverage = resolved["inside"].mean()
+        mean_live_winkler = resolved["winkler"].mean()
+        best_winkler = resolved["winkler"].min()
+        n_resolved = len(resolved)
+
+        st.caption(
+            f"Live coverage over {n_resolved} resolved predictions: "
+            f"**{live_coverage:.2%}** (target 95%)"
+        )
+
+        # Backtest baseline for deltas
+        bt_winkler = summary["mean_winkler_95"] if summary else None
+
+        cov_delta = f"{(live_coverage - 0.95)*100:+.1f}pp vs 95%"
+        cov_delta_color = "normal" if live_coverage >= 0.95 else "inverse"
+
+        winkler_delta = None
+        winkler_delta_label = ""
+        if bt_winkler is not None:
+            winkler_delta = bt_winkler - mean_live_winkler
+            winkler_delta_label = f"vs backtest ${bt_winkler:,.0f}"
+
+        lc1, lc2, lc3, lc4 = st.columns(4)
+        lc1.metric("Live Coverage", f"{live_coverage:.1%}", cov_delta, delta_color=cov_delta_color)
+        lc2.metric("Mean Live Winkler", f"${mean_live_winkler:,.0f}", f"+${winkler_delta:,.0f} {winkler_delta_label}" if winkler_delta is not None else None, delta_color="normal")
+        lc3.metric("Best Winkler Bar", f"${best_winkler:,.0f}")
+        lc4.metric("Resolved Bars", f"{n_resolved}")
+
+        # Winkler per bar line chart
+        fig_live = go.Figure()
+
+        # Color dots by inside/outside
+        colors = ["#2ecc71" if ins == 1 else "#e74c3c" for ins in resolved["inside"]]
+
+        fig_live.add_trace(go.Scatter(
+            x       = resolved["bar_time"],
+            y       = resolved["winkler"],
+            mode    = "lines+markers",
+            marker  = dict(color=colors, size=7),
+            line    = dict(color="#00d4ff", width=1.5),
+            name    = "Winkler",
+        ))
+
+        # Backtest baseline
+        if bt_winkler is not None:
+            fig_live.add_hline(
+                y               = bt_winkler,
+                line_dash       = "dash",
+                line_color      = "#f39c12",
+                annotation_text = f"Backtest baseline ${bt_winkler:,.0f}",
+                annotation_position = "right",
+            )
+
+        # 95th percentile of live winklers
+        pct95 = float(np.percentile(resolved["winkler"], 95))
+        fig_live.add_hline(
+            y               = pct95,
+            line_dash       = "dot",
+            line_color      = "#e74c3c",
+            annotation_text = f"95th pct ${pct95:,.0f}",
+            annotation_position = "right",
+        )
+
+        fig_live.update_layout(
+            title       = "Winkler Score per Resolved Bar",
+            xaxis_title = "Bar Time (UTC)",
+            yaxis_title = "Winkler Score",
+            template    = "plotly_dark",
+            height      = 380,
+            showlegend  = False,
+            margin      = dict(l=10, r=10, t=50, b=10),
+        )
+
+        st.plotly_chart(fig_live, use_container_width=True)
+
+    con_live.close()
+
+    st.divider()
+
     # ── Fetch live data ───────────────────────────────────────────────────────
     with st.spinner("Fetching latest data from Binance …"):
         try:
