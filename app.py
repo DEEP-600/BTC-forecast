@@ -49,13 +49,15 @@ LOOKBACK        = 500          # bars used for model fitting
 CHART_BARS      = 50           # bars shown on chart
 SUMMARY_FILE    = Path("backtest_summary.json")
 
-# DB path: Railway volume (/data) if available, else local
-VOLUME_DB = "/data/predictions.db"
-LOCAL_DB  = os.path.join(os.path.dirname(__file__), "predictions.db")
-DB_FILE   = Path(VOLUME_DB if os.path.exists("/data") else LOCAL_DB)
+DB_PATH = os.environ.get(
+    "RAILWAY_VOLUME_MOUNT_PATH",  # Railway injects this automatically
+    os.path.dirname(__file__)     # fallback for local
+)
+DB_PATH = os.path.join(DB_PATH, "predictions.db")
+DB_FILE = Path(DB_PATH)
 
 # Auto-seed volume DB on first Railway deploy
-if os.path.exists("/data") and not os.path.exists(VOLUME_DB):
+if os.environ.get("RAILWAY_VOLUME_MOUNT_PATH") and not os.path.exists(DB_PATH):
     import seed_db
     seed_db.seed()
 

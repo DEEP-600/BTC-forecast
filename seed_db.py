@@ -3,13 +3,14 @@ import shutil
 import os
 
 REPO_DB = os.path.join(os.path.dirname(__file__), "predictions_seed.db")
-VOLUME_DB = "/data/predictions.db"
+VOLUME_DIR = os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", "/data")
+VOLUME_DB = os.path.join(VOLUME_DIR, "predictions.db")
 
 
 def seed():
     # Only seed if volume db doesn't exist yet
     if not os.path.exists(VOLUME_DB):
-        os.makedirs("/data", exist_ok=True)
+        os.makedirs(VOLUME_DIR, exist_ok=True)
         if os.path.exists(REPO_DB):
             shutil.copy2(REPO_DB, VOLUME_DB)
             print("Seeded predictions.db from repo backup")
