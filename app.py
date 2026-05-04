@@ -1,23 +1,3 @@
-"""
-app.py — AlphaI × Polaris BTC Forecast Dashboard
-
-Live dashboard that:
-  1. Fetches the latest closed BTCUSDT 1-hour bar from Binance
-  2. Runs GARCH(1,1)-t + GBM on the last 500 bars
-  3. Displays the current price and 95% prediction range for the next hour
-  4. Shows a Plotly candlestick chart of the last 50 bars with a shaded ribbon
-  5. Shows Part-A backtest metrics at the top
-  6. Part C: persists every prediction to SQLite and shows a growing history table
-
-Deploy:
-    pip install -r requirements.txt
-    streamlit run app.py
-
-Host on Streamlit Community Cloud (free, stays alive):
-    1. Push this repo to GitHub (public)
-    2. Go to share.streamlit.io → New app → select repo → main file: app.py
-"""
-
 import json
 import os
 import sqlite3
@@ -36,39 +16,201 @@ from model import predict_95_range, winkler_score
 
 # ── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="BTC Forecast | AlphaI × Polaris",
+    page_title="₿ BTC Forecast | AlphaI",
     page_icon="₿",
     layout="wide",
+    initial_sidebar_state="collapsed",
 )
+
+# ── Aesthetic Injection ───────────────────────────────────────────────────────
+st.markdown("""
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@1,300;1,400&family=DM+Sans:wght@200;400&family=Space+Mono&display=swap" rel="stylesheet">
+    
+    <style>
+        /* Global Reset & Background */
+        .stApp {
+            background-color: #000000;
+            color: #ffffff;
+            font-family: 'DM Sans', sans-serif;
+        }
+        
+        /* Hide Streamlit Chrome */
+        header, footer, #MainMenu {visibility: hidden; height: 0;}
+        [data-testid="stHeader"] {display: none;}
+        [data-testid="stToolbar"] {display: none;}
+        
+        /* Main Container Padding */
+        .block-container {
+            padding-top: 4rem !important;
+            padding-bottom: 5rem !important;
+            max-width: 1400px;
+        }
+
+        /* Typography */
+        h1, h2, h3 {
+            font-family: 'DM Sans', sans-serif;
+            font-weight: 200;
+            text-transform: uppercase;
+            letter-spacing: 0.2em;
+            color: #ffffff;
+        }
+        
+        /* Section Labels - Terminal Style */
+        .section-label {
+            font-family: 'Space Mono', monospace;
+            font-size: 0.8rem;
+            letter-spacing: 0.35em;
+            text-transform: uppercase;
+            color: #AAAAAA; 
+            margin-bottom: 2rem;
+            margin-top: 3rem;
+            display: flex;
+            align-items: center;
+        }
+        .section-label::before {
+            content: "> ";
+            margin-right: 15px;
+            color: #00ff87;
+            font-weight: bold;
+        }
+
+        /* Metric Cards - AlphaI Style */
+        [data-testid="stMetric"] {
+            background-color: #0A0A0A;
+            border: 1px solid #1A1A1A;
+            padding: 2rem !important;
+            border-radius: 0px !important; 
+            border-left: 3px solid #00ff87;
+        }
+        
+        [data-testid="stMetricLabel"] {
+            font-family: 'Space Mono', monospace !important;
+            font-size: 0.75rem !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.25em !important;
+            color: #AAAAAA !important; 
+            margin-bottom: 1rem !important;
+        }
+        
+        [data-testid="stMetricValue"] {
+            font-family: 'Space Mono', monospace !important;
+            font-size: 2.2rem !important;
+            color: #ffffff !important;
+            font-weight: 400 !important;
+        }
+        
+        /* DataFrames & Tables */
+        [data-testid="stDataFrame"] {
+            border: 1px solid #1A1A1A !important;
+            background-color: #000 !important;
+        }
+        
+        /* Prediction Box */
+        .prediction-box {
+            background-color: #0A0A0A;
+            border: 1px solid #1A1A1A;
+            padding: 3rem;
+            text-align: center;
+            border-radius: 0px;
+            margin: 2.5rem 0;
+            border-left: 4px solid #00ff87;
+        }
+        .prediction-title {
+            font-family: 'Space Mono', monospace;
+            color: #AAAAAA;
+            font-size: 0.85rem;
+            letter-spacing: 0.4em;
+            text-transform: uppercase;
+            margin-bottom: 2rem;
+        }
+        .prediction-range {
+            font-family: 'Space Mono', monospace;
+            font-size: 3rem;
+            color: #ffffff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 2rem;
+        }
+        
+        /* Page Header - Manifesto Style */
+        .page-header {
+            margin-bottom: 5rem;
+            border-bottom: 1px solid #1A1A1A;
+            padding-bottom: 3rem;
+            text-align: center;
+        }
+        .page-header h1 {
+            font-size: 3.5rem;
+            margin: 0;
+            line-height: 1.2;
+            font-weight: 200;
+        }
+        .page-header .italic {
+            font-family: 'Cormorant Garamond', serif;
+            font-style: italic;
+            text-transform: none;
+            font-weight: 300;
+            font-size: 4rem;
+            color: #ffffff;
+            display: block;
+            margin-top: -0.5rem;
+        }
+        
+        /* Divider */
+        hr {
+            border-top: 1px solid #1A1A1A !important;
+            margin: 5rem 0 !important;
+        }
+        
+        /* Status Dot */
+        .status-dot {
+            height: 10px;
+            width: 10px;
+            background-color: #00ff87;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 15px;
+            box-shadow: 0 0 15px #00ff87;
+        }
+
+        /* Footer */
+        .footer-text {
+            font-family: 'Space Mono', monospace;
+            font-size: 0.75rem;
+            color: #555555;
+            text-transform: uppercase;
+            letter-spacing: 0.2em;
+            text-align: center;
+            padding: 4rem 0;
+            border-top: 1px solid #1A1A1A;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
 def ms_until_next_candle(buffer_sec=30):
     now = datetime.now(timezone.utc)
     secs_past_hour = now.minute * 60 + now.second
     secs_until_close = 3600 - secs_past_hour
-    # Add 30s buffer so Binance has time to finalise the candle
     return (secs_until_close + buffer_sec) * 1000
 
 st_autorefresh(interval=ms_until_next_candle(), key="candle_sync")
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-LOOKBACK        = 500          # bars used for model fitting
-CHART_BARS      = 50           # bars shown on chart
+LOOKBACK        = 500
+CHART_BARS      = 50
 SUMMARY_FILE    = Path("backtest_summary.json")
+DB_PATH         = os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", os.path.dirname(__file__))
+DB_PATH         = os.path.join(DB_PATH, "predictions.db")
+DB_FILE         = Path(DB_PATH)
 
-DB_PATH = os.environ.get(
-    "RAILWAY_VOLUME_MOUNT_PATH",  # Railway injects this automatically
-    os.path.dirname(__file__)     # fallback for local
-)
-DB_PATH = os.path.join(DB_PATH, "predictions.db")
-DB_FILE = Path(DB_PATH)
-
-# Auto-seed volume DB on first Railway deploy
 if os.environ.get("RAILWAY_VOLUME_MOUNT_PATH") and not os.path.exists(DB_PATH):
     import seed_db
     seed_db.seed()
 
-
-# ── SQLite persistence (Part C) ───────────────────────────────────────────────
+# ── SQLite persistence ────────────────────────────────────────────────────────
 def init_db():
     con = sqlite3.connect(DB_FILE)
     con.execute("""
@@ -89,395 +231,212 @@ def init_db():
     con.commit()
     return con
 
-
-def save_prediction(con, pred: dict, bar_time: str):
+def save_prediction(con, pred, bar_time):
     con.execute("""
         INSERT OR IGNORE INTO predictions
           (fetched_at, bar_time, current_price, lower_95, upper_95, sigma, t_df, entropy_scalar)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        datetime.now(timezone.utc).isoformat(),
-        bar_time,
-        pred["current_price"],
-        pred["lower_95"],
-        pred["upper_95"],
-        pred["sigma"],
-        pred["t_df"],
-        pred["entropy_scalar"],
-    ))
+    """, (datetime.now(timezone.utc).isoformat(), bar_time, pred["current_price"], pred["lower_95"], pred["upper_95"], pred["sigma"], pred["t_df"], pred["entropy_scalar"]))
     con.commit()
 
-
-def fill_actuals(con, df_prices: pd.DataFrame):
-    """
-    Back-fill actual_price for past predictions once the NEXT bar has closed.
-    A prediction made at bar_time T is predicting the close of bar T+1.
-    So we look up the bar that comes AFTER bar_time in the price series.
-    """
+def fill_actuals(con, df_prices):
     rows = pd.read_sql("SELECT id, bar_time FROM predictions WHERE actual_price IS NULL", con)
-    if rows.empty:
-        return
-
-    # Build a map: bar_time → next bar's close
-    times  = list(df_prices.index)
-    closes = list(df_prices["close"])
-    next_close_map = {}
-    for i in range(len(times) - 1):
-        next_close_map[times[i].isoformat()] = closes[i + 1]
-
-    for _, row in rows.iterrows():
-        actual = next_close_map.get(row["bar_time"])
-        if actual is not None:
-            lo, hi = con.execute(
-                "SELECT lower_95, upper_95 FROM predictions WHERE id=?", (row["id"],)
-            ).fetchone()
-            inside = int(lo <= actual <= hi)
-            con.execute(
-                "UPDATE predictions SET actual_price=?, inside=? WHERE id=?",
-                (actual, inside, row["id"]),
-            )
+    if rows.empty: return
+    times, closes = list(df_prices.index), list(df_prices["close"])
+    m = {times[i].isoformat(): closes[i+1] for i in range(len(times)-1)}
+    for _, r in rows.iterrows():
+        a = m.get(r["bar_time"])
+        if a is not None:
+            lo, hi = con.execute("SELECT lower_95, upper_95 FROM predictions WHERE id=?", (r["id"],)).fetchone()
+            con.execute("UPDATE predictions SET actual_price=?, inside=? WHERE id=?", (a, int(lo <= a <= hi), r["id"]))
     con.commit()
 
-
-def load_history(con, limit: int = 200) -> pd.DataFrame:
-    return pd.read_sql(
-        "SELECT * FROM predictions ORDER BY bar_time DESC LIMIT ?",
-        con,
-        params=(limit,),
-    )
-
+def load_history(con, limit=100):
+    return pd.read_sql("SELECT * FROM predictions ORDER BY bar_time DESC LIMIT ?", con, params=(limit,))
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-@st.cache_data(ttl=55)   # re-fetch at most every 55s
+@st.cache_data(ttl=55)
 def get_data(n: int) -> pd.DataFrame:
     return fetch_klines(n_bars=n)
 
-
 def load_backtest_summary() -> dict | None:
-    if SUMMARY_FILE.exists():
-        return json.loads(SUMMARY_FILE.read_text())
+    if SUMMARY_FILE.exists(): return json.loads(SUMMARY_FILE.read_text())
     return None
 
+def section_header(label, is_live=False):
+    dot = '<span class="status-dot"></span>' if is_live else ""
+    st.markdown(f'<div class="section-label">{dot}{label}</div>', unsafe_allow_html=True)
 
-def vol_regime_label(sigma: float) -> tuple[str, str]:
-    """Map hourly sigma (log-return) to a human label + colour."""
-    annualised = sigma * (24 * 365) ** 0.5   # rough annualised vol
-    if annualised < 0.50:
-        return "🟢 Calm", "#2ecc71"
-    elif annualised < 1.00:
-        return "🟡 Normal", "#f1c40f"
-    else:
-        return "🔴 Volatile", "#e74c3c"
-
-
-def minutes_to_next_close() -> int:
-    """Minutes remaining until the top of the next UTC hour."""
-    now = datetime.now(timezone.utc)
-    return 59 - now.minute
-
-
-# ── Main dashboard ────────────────────────────────────────────────────────────
+# ── Main ──────────────────────────────────────────────────────────────────────
 def main():
-    # ── Header ───────────────────────────────────────────────────────────────
-    st.markdown(
-        "<h1 style='margin-bottom:0'>₿ BTC/USDT · 1-Hour Forecast</h1>"
-        "<p style='color:#888;margin-top:0'>AlphaI × Polaris Challenge · GARCH(1,1)-t + GBM Model</p>",
-        unsafe_allow_html=True,
-    )
+    # 1. Header
+    st.markdown("""
+        <div class="page-header">
+            <h1>₿ BTC/USDT</h1>
+            <span class="italic">Range Forecaster</span>
+        </div>
+    """, unsafe_allow_html=True)
 
-    # ── Load Part-A summary ───────────────────────────────────────────────────
+    # Fetch & Predict
+    try:
+        df = get_data(LOOKBACK + 1)
+    except Exception as e:
+        st.error(f"Binance Error: {e}")
+        st.stop()
+
+    p, t = df["close"].values[-LOOKBACK:], df.index[-1].isoformat()
+    pred = predict_95_range(p)
+    con = init_db()
+    save_prediction(con, pred, t)
+    fill_actuals(con, df)
     summary = load_backtest_summary()
 
-    if summary:
-        c1, c2, c3, c4 = st.columns(4)
-        coverage = summary["coverage_95"]
-        cov_delta = f"{(coverage - 0.95)*100:+.2f}pp vs target 95%"
-        c1.metric("Backtest Coverage (95%)", f"{coverage:.2%}", cov_delta)
-        c2.metric("Avg Range Width",  f"${summary['mean_width']:,.0f}")
-        c3.metric("Mean Winkler Score", f"${summary['mean_winkler_95']:,.0f}", "lower = better")
-        c4.metric("Predictions", f"{summary['n_predictions']:,}")
-        st.caption(f"Part-A backtest computed at {summary.get('generated_at','N/A')}")
-    else:
-        st.info(
-            "Backtest summary not found. Run `python backtest.py` once "
-            "to generate `backtest_summary.json`."
-        )
-
-    st.divider()
-
-    # ── Live Performance (resolved bars) ────────────────────────────────────────
-    st.subheader("📡 Live Performance (Resolved Bars)")
-
-    # Open a read-only DB connection for live performance metrics
-    con_live = sqlite3.connect(DB_FILE)
-    resolved = pd.read_sql(
-        "SELECT * FROM predictions WHERE actual_price IS NOT NULL ORDER BY bar_time ASC",
-        con_live,
-    )
-
-    if len(resolved) < 3:
-        st.info("⏳ Waiting for more resolved predictions…")
-    else:
-        # Compute per-row winkler
-        resolved["winkler"] = resolved.apply(
-            lambda r: winkler_score(r["lower_95"], r["upper_95"], r["actual_price"]),
-            axis=1,
-        )
-        live_coverage = resolved["inside"].mean()
-        mean_live_winkler = resolved["winkler"].mean()
-        best_winkler = resolved["winkler"].min()
-        n_resolved = len(resolved)
-
-        st.caption(
-            f"Live coverage over {n_resolved} resolved predictions: "
-            f"**{live_coverage:.2%}** (target 95%)"
-        )
-
-        # Backtest baseline for deltas
-        bt_winkler = summary["mean_winkler_95"] if summary else None
-
-        cov_delta = f"{(live_coverage - 0.95)*100:+.1f}pp vs 95%"
-        cov_delta_color = "normal" if live_coverage >= 0.95 else "inverse"
-
-        winkler_delta = None
-        winkler_delta_label = ""
-        if bt_winkler is not None:
-            winkler_delta = bt_winkler - mean_live_winkler
-            winkler_delta_label = f"vs backtest ${bt_winkler:,.0f}"
-
-        lc1, lc2, lc3, lc4 = st.columns(4)
-        lc1.metric("Live Coverage", f"{live_coverage:.1%}", cov_delta, delta_color=cov_delta_color)
-        lc2.metric("Mean Live Winkler", f"${mean_live_winkler:,.0f}", f"+${winkler_delta:,.0f} {winkler_delta_label}" if winkler_delta is not None else None, delta_color="normal")
-        lc3.metric("Best Winkler Bar", f"${best_winkler:,.0f}")
-        lc4.metric("Resolved Bars", f"{n_resolved}")
-
-        # Winkler per bar line chart
+    # 2. Live Performance
+    section_header("LIVE PERFORMANCE", is_live=True)
+    res = pd.read_sql("SELECT * FROM predictions WHERE actual_price IS NOT NULL ORDER BY bar_time ASC", con)
+    
+    if len(res) >= 3:
+        res["winkler"] = res.apply(lambda r: winkler_score(r["lower_95"], r["upper_95"], r["actual_price"]), axis=1)
+        c = st.columns(4)
+        c[0].metric("LIVE COVERAGE", f"{res['inside'].mean():.1%}")
+        c[1].metric("MEAN WINKLER", f"${res['winkler'].mean():,.0f}")
+        c[2].metric("BEST BAR", f"${res['winkler'].min():,.0f}")
+        c[3].metric("RESOLVED", len(res))
+        
+        # Winkler chart with high visibility
         fig_live = go.Figure()
-
-        # Color dots by inside/outside
-        colors = ["#2ecc71" if ins == 1 else "#e74c3c" for ins in resolved["inside"]]
-
+        colors = ["#00ff87" if i==1 else "#ff6b35" for i in res["inside"]]
         fig_live.add_trace(go.Scatter(
-            x       = resolved["bar_time"],
-            y       = resolved["winkler"],
-            mode    = "lines+markers",
-            marker  = dict(color=colors, size=7),
-            line    = dict(color="#00d4ff", width=1.5),
-            name    = "Winkler",
+            x=res["bar_time"], y=res["winkler"], 
+            mode="lines+markers", 
+            marker=dict(color=colors, size=8, line=dict(width=1, color="#000")), 
+            line=dict(color="#222222", width=1.5)
         ))
-
-        # Backtest baseline
-        if bt_winkler is not None:
-            fig_live.add_hline(
-                y               = bt_winkler,
-                line_dash       = "dash",
-                line_color      = "#f39c12",
-                annotation_text = f"Backtest baseline ${bt_winkler:,.0f}",
-                annotation_position = "right",
-            )
-
-        # 95th percentile of live winklers
-        pct95 = float(np.percentile(resolved["winkler"], 95))
-        fig_live.add_hline(
-            y               = pct95,
-            line_dash       = "dot",
-            line_color      = "#e74c3c",
-            annotation_text = f"95th pct ${pct95:,.0f}",
-            annotation_position = "right",
-        )
-
+        
+        if summary:
+            fig_live.add_hline(y=summary["mean_winkler_95"], line_dash="dash", line_color="#444444", 
+                               annotation_text="BT BASELINE", annotation_font=dict(family="Space Mono", size=10, color="#888"))
+        
         fig_live.update_layout(
-            title       = "Winkler Score per Resolved Bar",
-            xaxis_title = "Bar Time (UTC)",
-            yaxis_title = "Winkler Score",
-            template    = "plotly_dark",
-            height      = 380,
-            showlegend  = False,
-            margin      = dict(l=10, r=10, t=50, b=10),
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", 
+            height=350, margin=dict(l=0, r=0, t=30, b=0),
+            xaxis=dict(showgrid=True, gridcolor="#111111", tickfont=dict(family="Space Mono", color="#AAAAAA", size=11)),
+            yaxis=dict(showgrid=True, gridcolor="#111111", tickfont=dict(family="Space Mono", color="#AAAAAA", size=11), title="Winkler Score")
         )
-
-        st.plotly_chart(fig_live, use_container_width=True)
-
-    con_live.close()
+        st.plotly_chart(fig_live, use_container_width=True, config={'displayModeBar': False})
+    else:
+        st.info("⏳ SYNCING RESOLVED STREAM...")
 
     st.divider()
 
-    # ── Fetch live data ───────────────────────────────────────────────────────
-    with st.spinner("Fetching latest data from Binance …"):
-        try:
-            df = get_data(LOOKBACK + 1)
-        except Exception as exc:
-            st.error(f"Binance API error: {exc}")
-            st.stop()
+    # 3. Backtest Metrics
+    section_header("BACKTEST METRICS")
+    if summary:
+        c = st.columns(4)
+        c[0].metric("COVERAGE", f"{summary['coverage_95']:.2%}")
+        c[1].metric("MEAN WIDTH", f"${summary['mean_width']:,.0f}")
+        c[2].metric("MEAN WINKLER", f"${summary['mean_winkler_95']:,.0f}")
+        c[3].metric("SAMPLES (N)", f"{summary['n_predictions']:,}")
+    
+    st.divider()
 
-    # Run model on last LOOKBACK bars
-    prices   = df["close"].values[-LOOKBACK:]
-    bar_time = df.index[-1].isoformat()
+    # 4. Active Prediction Box
+    section_header("ACTIVE PREDICTION WINDOW")
+    lo, hi = pred["lower_95"], pred["upper_95"]
+    mins_left = 59 - datetime.now(timezone.utc).minute
 
-    with st.spinner("Running GARCH(1,1)-t model …"):
-        pred = predict_95_range(prices)
+    st.markdown(f"""
+        <div class="prediction-box">
+            <div class="prediction-title">Target Range (95% Confidence)</div>
+            <div class="prediction-range">
+                <span style="color:#00ff87">${lo:,.0f}</span>
+                <span style="color:#222; font-size:2rem">—</span>
+                <span style="color:#ff6b35">${hi:,.0f}</span>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("CURRENT PRICE", f"${pred['current_price']:,.2f}")
+    c2.metric("VOLATILITY", f"{pred['sigma']*100:.3f}%")
+    c3.metric("ENTROPY SCALAR", f"{pred['entropy_scalar']:.2f}X")
+    c4.metric("T-CLOSE", f"{mins_left} MIN")
 
-    # ── Persist prediction (Part C) ───────────────────────────────────────────
-    con = init_db()
-    save_prediction(con, pred, bar_time)
-    fill_actuals(con, df)
+    st.divider()
 
-    # ── Live prediction cards ─────────────────────────────────────────────────
-    lo, hi      = pred["lower_95"], pred["upper_95"]
-    curr        = pred["current_price"]
-    width       = hi - lo
-    mins_left   = minutes_to_next_close()
-    vol_label, vol_color = vol_regime_label(pred["sigma"])
-
-    st.subheader("Next 1-Hour Prediction")
-    col1, col2, col3, col4, col5 = st.columns(5)
-    col1.metric("Current BTC Price",  f"${curr:,.2f}")
-    col2.metric("Lower Bound (2.5%)", f"${lo:,.2f}")
-    col3.metric("Upper Bound (97.5%)",f"${hi:,.2f}")
-    col4.metric("Range Width",        f"${width:,.2f}")
-    col5.metric("Next candle in",     f"{mins_left} min")
-
-    st.markdown(
-        f"<p style='color:{vol_color};font-size:1.1rem'>"
-        f"Volatility Regime: <b>{vol_label}</b> "
-        f"&nbsp;|&nbsp; Hourly σ = {pred['sigma']*100:.4f}% "
-        f"&nbsp;|&nbsp; Student-t df = {pred['t_df']:.1f} "
-        f"&nbsp;|&nbsp; Entropy scalar = {pred['entropy_scalar']:.2f}x"
-        f"</p>",
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        f"<div style='background:#1a1a2e;border-radius:8px;padding:16px;"
-        f"text-align:center;font-size:1.6rem;font-weight:bold;color:#00d4ff'>"
-        f"95% confident BTC will be between "
-        f"<span style='color:#2ecc71'>${lo:,.0f}</span> and "
-        f"<span style='color:#e74c3c'>${hi:,.0f}</span> at the next close"
-        f"</div>",
-        unsafe_allow_html=True,
-    )
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # ── Candlestick chart + ribbon ────────────────────────────────────────────
-    chart_df = df.iloc[-CHART_BARS:]
-
+    # 5. Price Action Chart
+    section_header("PRICE ACTION + PREDICTION BAND")
+    cdf = df.iloc[-CHART_BARS:]
     fig = go.Figure()
-
+    
     # Candlestick
     fig.add_trace(go.Candlestick(
-        x       = chart_df.index,
-        open    = chart_df["open"],
-        high    = chart_df["high"],
-        low     = chart_df["low"],
-        close   = chart_df["close"],
-        name    = "BTCUSDT",
-        increasing_line_color = "#2ecc71",
-        decreasing_line_color = "#e74c3c",
+        x=cdf.index, open=cdf["open"], high=cdf["high"], low=cdf["low"], close=cdf["close"], 
+        increasing_line_color="#00ff87", decreasing_line_color="#ff6b35",
+        increasing_fillcolor="#00ff87", decreasing_fillcolor="#ff6b35",
+        name="BTC/USDT"
     ))
-
-    # Prediction ribbon for the NEXT bar
-    next_time = chart_df.index[-1] + pd.Timedelta(hours=1)
-    ribbon_x  = [chart_df.index[-1], next_time, next_time, chart_df.index[-1]]
-    ribbon_y  = [lo, lo, hi, hi]
-
+    
+    # Prediction Band
+    nt = cdf.index[-1] + pd.Timedelta(hours=1)
     fig.add_trace(go.Scatter(
-        x       = ribbon_x,
-        y       = ribbon_y,
-        fill    = "toself",
-        fillcolor = "rgba(0, 212, 255, 0.15)",
-        line    = dict(color="rgba(0, 212, 255, 0.6)", width=1.5, dash="dot"),
-        name    = "95% Prediction Band",
+        x=[cdf.index[-1], nt, nt, cdf.index[-1]], y=[lo, lo, hi, hi], 
+        fill="toself", fillcolor="rgba(0,255,135,0.05)", 
+        line=dict(color="#00ff87", width=1, dash="dot"), 
+        name="Forecast Band"
     ))
-
-    # Current price line
-    fig.add_hline(
-        y           = curr,
-        line_dash   = "dash",
-        line_color  = "#f39c12",
-        annotation_text = f"Current ${curr:,.0f}",
-        annotation_position = "right",
-    )
-
+    
     fig.update_layout(
-        title            = "Last 50 BTCUSDT 1-Hour Candles + Next-Hour 95% Range",
-        xaxis_title      = "Time (UTC)",
-        yaxis_title      = "Price (USDT)",
-        xaxis_rangeslider_visible = False,
-        template         = "plotly_dark",
-        height           = 520,
-        legend           = dict(orientation="h", y=1.05),
-        margin           = dict(l=10, r=10, t=60, b=10),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", 
+        height=600, margin=dict(l=0, r=0, t=0, b=0),
+        xaxis=dict(showgrid=True, gridcolor="#111111", rangeslider_visible=False, tickfont=dict(family="Space Mono", color="#AAAAAA")),
+        yaxis=dict(showgrid=True, gridcolor="#111111", tickfont=dict(family="Space Mono", color="#AAAAAA")),
+        showlegend=False
     )
+    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.divider()
 
-    # ── Part C: prediction history ────────────────────────────────────────────
-    st.subheader("📋 Prediction History (Part C)")
-    history = load_history(con, limit=100)
-
-    if history.empty:
-        st.info("No history yet — revisit after a few hours.")
-    else:
-        # Compute per-row winkler where actual is known
-        def row_winkler(row):
-            if pd.isna(row["actual_price"]):
-                return np.nan
-            return winkler_score(row["lower_95"], row["upper_95"], row["actual_price"])
-
-        history["winkler"]  = history.apply(row_winkler, axis=1)
-        history["hit"]      = history["inside"].map(
-            lambda x: "✅" if x == 1 else ("❌" if x == 0 else "⏳")
-        )
-
-        display_cols = [
-            "bar_time", "current_price", "lower_95", "upper_95",
-            "actual_price", "hit", "winkler",
-        ]
-        rename = {
-            "bar_time":      "Bar Time (UTC)",
-            "current_price": "Price at Prediction",
-            "lower_95":      "Lower 95%",
-            "upper_95":      "Upper 95%",
-            "actual_price":  "Actual Close",
-            "hit":           "Inside?",
-            "winkler":       "Winkler",
+    # 6. History Table
+    section_header("PREDICTION HISTORY")
+    h = load_history(con, 50)
+    
+    if not h.empty:
+        h["INSIDE?"] = h["inside"].map({1: "✅", 0: "❌"}).fillna("⏳")
+        h["WINKLER"] = h.apply(lambda r: winkler_score(r["lower_95"], r["upper_95"], r["actual_price"]) if not pd.isna(r["actual_price"]) else np.nan, axis=1)
+        
+        display_cols = ["bar_time", "current_price", "lower_95", "upper_95", "actual_price", "INSIDE?", "WINKLER"]
+        rename_map = {
+            "bar_time": "TIME (UTC)", 
+            "current_price": "ENTRY PRICE", 
+            "lower_95": "LOWER 95%", 
+            "upper_95": "UPPER 95%", 
+            "actual_price": "RESOLVED PRICE"
         }
-        disp = history[display_cols].rename(columns=rename)
-
-        # Rolling coverage (rows where actual is known)
-        known = history[history["inside"].notna()]
-        if len(known) > 0:
-            rolling_cov = known["inside"].mean()
-            st.caption(
-                f"Live coverage over {len(known)} resolved predictions: "
-                f"**{rolling_cov:.2%}** (target 95%)"
-            )
-
+        
+        disp = h[display_cols].rename(columns=rename_map)
+        
         st.dataframe(
-            disp,
-            use_container_width=True,
-            hide_index=True,
+            disp, 
+            use_container_width=True, 
+            hide_index=True, 
             column_config={
-                "Lower 95%":           st.column_config.NumberColumn(format="$%.2f"),
-                "Upper 95%":           st.column_config.NumberColumn(format="$%.2f"),
-                "Price at Prediction": st.column_config.NumberColumn(format="$%.2f"),
-                "Actual Close":        st.column_config.NumberColumn(format="$%.2f"),
-                "Winkler":             st.column_config.NumberColumn(format="%.1f"),
-            },
+                "TIME (UTC)": st.column_config.TextColumn("TIME (UTC)"),
+                "LOWER 95%": st.column_config.NumberColumn(format="$%.2f"), 
+                "UPPER 95%": st.column_config.NumberColumn(format="$%.2f"),
+                "ENTRY PRICE": st.column_config.NumberColumn(format="$%.2f"), 
+                "RESOLVED PRICE": st.column_config.NumberColumn(format="$%.2f"),
+                "WINKLER": st.column_config.NumberColumn(format="%.1f")
+            }
         )
-
+    
+    # 7. Footer
+    st.markdown("""
+        <div class="footer-text">
+           GARCH(1,1)-t + GBM | 10k Path Monte-Carlo | Live Binance Data Feed
+        </div>
+    """, unsafe_allow_html=True)
+    
     con.close()
 
-    # ── Footer ────────────────────────────────────────────────────────────────
-    st.divider()
-    st.caption(
-        "Model: GARCH(1,1)-t conditional volatility + Geometric Brownian Motion "
-        "| 10,000 Monte-Carlo paths | Student-t innovations "
-        "| Data: Binance data-api.binance.vision (no API key) "
-        "| Refreshes every 5 min automatically"
-    )
-
-
-if __name__ == "__main__":
-    main()
+if __name__ == "__main__": main()
