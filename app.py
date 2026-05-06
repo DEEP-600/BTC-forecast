@@ -399,7 +399,7 @@ def main():
 
     # 6. History Table
     section_header("PREDICTION HISTORY")
-    h = load_history(con, 50)
+    h = load_history(con, 500)
     
     if not h.empty:
         h["INSIDE?"] = h["inside"].map({1: "✅", 0: "❌"}).fillna("⏳")
